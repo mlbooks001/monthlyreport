@@ -1,6 +1,6 @@
 // DOM Elements (DOMContentLoaded 이후에 초기화)
 let userEmailEl, companyNameEl, logoutBtn, tableContainer, yearFilter, categoryFilter;
-let compareYear1, compareYear2, compareBtn;
+let compareYear1, compareYear2, compareBtn, pdfDownloadBtn;
 
 // Stats Elements
 let currentMonthSalesEl, lastMonthSalesEl, yearTotalSalesEl, avgMonthlySalesEl, salesChangeEl;
@@ -41,6 +41,7 @@ function initDOMElements() {
     compareYear1 = document.getElementById('compareYear1');
     compareYear2 = document.getElementById('compareYear2');
     compareBtn = document.getElementById('compareBtn');
+    pdfDownloadBtn = document.getElementById('pdfDownloadBtn');
     
     currentMonthSalesEl = document.getElementById('currentMonthSales');
     lastMonthSalesEl = document.getElementById('lastMonthSales');
@@ -116,6 +117,13 @@ function setupEventListeners() {
         compareBtn.addEventListener('click', () => {
             updateChart();
             updateInsights();
+        });
+    }
+    
+    // PDF 다운로드 버튼 클릭
+    if (pdfDownloadBtn) {
+        pdfDownloadBtn.addEventListener('click', async () => {
+            await downloadPDF();
         });
     }
     
@@ -776,4 +784,282 @@ function formatCompactCurrency(amount) {
         return (amount / 10000).toFixed(0) + '만 원';
     }
     return formatCurrency(amount);
+}
+
+// PDF 다운로드 함수
+async function downloadPDF() {
+    if (!window.jspdf || !html2canvas) {
+        alert('PDF 생성 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도해주세요.');
+        return;
+    }
+    
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 15;
+    let yPosition = margin;
+    
+    // 로딩 표시
+    pdfDownloadBtn.disabled = true;
+    pdfDownloadBtn.textContent = 'PDF 생성 중...';
+    
+    try {
+        // 1. 헤더 정보
+        pdf.setFontSize(18);
+        pdf.setFont('helvetica', 'bold');
+        const companyName = companyNameEl.textContent || '고객';
+        const year1 = compareYear1.value;
+        const year2 = compareYear2.value;
+        pdf.text(`${companyName} ${year2}-${year1} 매출 비교 리포트`, pageWidth / 2, yPosition, { align: 'center' });
+        yPosition += 10;
+        
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'normal');
+        const currentDate = new Date().toLocaleDateString('ko-KR');
+        pdf.text(`생성일: ${currentDate}`, pageWidth / 2, yPosition, { align: 'center' });
+        yPosition += 15;
+        
+        // 2. 요약 정보 카드
+        pdf.setFontSize(12);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text('📊 요약 정보', margin, yPosition);
+        yPosition += 8;
+        
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'normal');
+        const data1 = getYearlyData(year1);
+        const data2 = getYearlyData(year2);
+        const total1 = data1.reduce((a, b) => a + b, 0);
+        const total2 = data2.reduce((a, b) => a + b, 0);
+        const growthRate = total2 > 0 ? ((total1 - total2) / total2 * 100).toFixed(1) : 0;
+        
+        pdf.text(`• ${year1}년 총 매출: ${formatCurrency(total1)}`, margin + 5, yPosition);
+        yPosition += 6;
+        pdf.text(`• ${year2}년 총 매출: ${formatCurrency(total2)}`, margin + 5, yPosition);
+        yPosition += 6;
+        pdf.text(`• 전년 대비: ${growthRate >= 0 ? '+' : ''}${growthRate}% ${growthRate >= 0 ? '성장' : '감소'}`, margin + 5, yPosition);
+        yPosition += 10;
+        
+        // 3. 차트 이미지 추가
+        const chartCanvas = document.getElementById('salesChart');
+        if (chartCanvas) {
+            pdf.setFontSize(12);
+            pdf.setFont('helvetica', 'bold');
+            pdf.text('📈 월별 매출 비교 차트', margin, yPosition);
+            yPosition += 5;
+            
+            try {
+                const chartImage = await html2canvas(chartCanvas, {
+                    backgroundColor: '#ffffff',
+                    scale: 2,
+                    logging: false
+                });
+                
+                const imgData = chartImage.toDataURL('image/png');
+                const imgWidth = pageWidth - (margin * 2);
+                const imgHeight = (chartImage.height * imgWidth) / chartImage.width;
+                
+                // 페이지 넘김 체크
+                if (yPosition + imgHeight > pageHeight - margin) {
+                    pdf.addPage();
+                    yPosition = margin;
+                }
+                
+                pdf.addImage(imgData, 'PNG', margin, yPosition, imgWidth, imgHeight);
+                yPosition += imgHeight + 10;
+            } catch (error) {
+                console.error('Error capturing chart:', error);
+                pdf.text('차트 이미지를 생성할 수 없습니다.', margin, yPosition);
+                yPosition += 10;
+            }
+        }
+        
+        // 4. 월별 매출 데이터 테이블
+        if (yPosition > pageHeight - 50) {
+            pdf.addPage();
+            yPosition = margin;
+        }
+        
+        pdf.setFontSize(12);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text('📋 월별 매출 상세', margin, yPosition);
+        yPosition += 8;
+        
+        // 테이블 헤더
+        pdf.setFontSize(9);
+        pdf.setFont('helvetica', 'bold');
+        const colWidths = [20, 30, 30, 30, 30];
+        const headers = ['월', `${year1}년`, `${year2}년`, '차이', '증감률'];
+        let xPos = margin;
+        
+        headers.forEach((header, i) => {
+            pdf.text(header, xPos, yPosition);
+            xPos += colWidths[i];
+        });
+        yPosition += 6;
+        
+        // 테이블 데이터
+        pdf.setFont('helvetica', 'normal');
+        const months = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
+        
+        for (let i = 0; i < 12; i++) {
+            if (yPosition > pageHeight - 15) {
+                pdf.addPage();
+                yPosition = margin;
+            }
+            
+            const month1 = data1[i] || 0;
+            const month2 = data2[i] || 0;
+            const diff = month1 - month2;
+            const changeRate = month2 > 0 ? ((diff / month2) * 100).toFixed(1) : (month1 > 0 ? '100.0' : '0.0');
+            
+            xPos = margin;
+            pdf.text(months[i], xPos, yPosition);
+            xPos += colWidths[0];
+            pdf.text(formatCurrency(month1), xPos, yPosition);
+            xPos += colWidths[1];
+            pdf.text(formatCurrency(month2), xPos, yPosition);
+            xPos += colWidths[2];
+            pdf.text(formatCurrency(diff), xPos, yPosition);
+            xPos += colWidths[3];
+            pdf.text(`${changeRate >= 0 ? '+' : ''}${changeRate}%`, xPos, yPosition);
+            
+            yPosition += 6;
+        }
+        
+        // 5. 통계 카드 정보
+        if (yPosition > pageHeight - 40) {
+            pdf.addPage();
+            yPosition = margin;
+        }
+        
+        pdf.setFontSize(12);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text('💰 주요 통계', margin, yPosition);
+        yPosition += 8;
+        
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'normal');
+        const currentMonth = new Date().getMonth() + 1;
+        const currentYear = new Date().getFullYear();
+        const selectedYear = parseInt(yearFilter.value);
+        
+        let currentMonthSales = 0;
+        let lastMonthSales = 0;
+        
+        if (selectedYear === currentYear) {
+            currentMonthSales = data1[currentMonth - 1] || 0;
+            lastMonthSales = data1[currentMonth - 2] || 0;
+        } else {
+            currentMonthSales = data1[11] || 0;
+            lastMonthSales = data1[10] || 0;
+        }
+        
+        pdf.text(`• 이번 달 매출: ${formatCurrency(currentMonthSales)}`, margin + 5, yPosition);
+        yPosition += 6;
+        pdf.text(`• 지난 달 매출: ${formatCurrency(lastMonthSales)}`, margin + 5, yPosition);
+        yPosition += 6;
+        pdf.text(`• 올해 누적 매출: ${formatCurrency(total1)}`, margin + 5, yPosition);
+        yPosition += 6;
+        
+        const monthsWithData = data1.filter(v => v > 0).length;
+        const avgSales = monthsWithData > 0 ? total1 / monthsWithData : 0;
+        pdf.text(`• 평균 월 매출: ${formatCurrency(avgSales)}`, margin + 5, yPosition);
+        yPosition += 15;
+        
+        // 6. 월별 매출 현황 테이블 (tableContainer의 내용)
+        const tableElement = tableContainer.querySelector('.data-table');
+        if (tableElement) {
+            if (yPosition > pageHeight - 50) {
+                pdf.addPage();
+                yPosition = margin;
+            }
+            
+            pdf.setFontSize(12);
+            pdf.setFont('helvetica', 'bold');
+            const selectedYear = yearFilter.value;
+            const selectedCategory = categoryFilter.value;
+            pdf.text(`📊 ${selectedYear}년 월별 매출 현황`, margin, yPosition);
+            yPosition += 8;
+            
+            try {
+                // 테이블을 이미지로 변환
+                const tableImage = await html2canvas(tableElement, {
+                    backgroundColor: '#ffffff',
+                    scale: 2,
+                    logging: false
+                });
+                
+                const imgData = tableImage.toDataURL('image/png');
+                const imgWidth = pageWidth - (margin * 2);
+                const imgHeight = (tableImage.height * imgWidth) / tableImage.width;
+                
+                // 페이지 넘김 체크
+                if (yPosition + imgHeight > pageHeight - margin) {
+                    pdf.addPage();
+                    yPosition = margin;
+                }
+                
+                pdf.addImage(imgData, 'PNG', margin, yPosition, imgWidth, imgHeight);
+                yPosition += imgHeight + 10;
+            } catch (error) {
+                console.error('Error capturing table:', error);
+                // 이미지 변환 실패 시 텍스트로 표시
+                pdf.setFontSize(10);
+                pdf.setFont('helvetica', 'normal');
+                pdf.text('월별 매출 현황 테이블을 포함할 수 없습니다.', margin, yPosition);
+                yPosition += 10;
+            }
+        } else {
+            // 테이블이 없으면 텍스트로 데이터 표시
+            if (yPosition > pageHeight - 50) {
+                pdf.addPage();
+                yPosition = margin;
+            }
+            
+            pdf.setFontSize(12);
+            pdf.setFont('helvetica', 'bold');
+            const selectedYear = yearFilter.value;
+            pdf.text(`📊 ${selectedYear}년 월별 매출 현황`, margin, yPosition);
+            yPosition += 8;
+            
+            // 현재 선택된 연도의 데이터 가져오기
+            const selectedYearData = getYearlyData(selectedYear);
+            pdf.setFontSize(9);
+            pdf.setFont('helvetica', 'bold');
+            pdf.text('월', margin, yPosition);
+            pdf.text('매출액', margin + 50, yPosition);
+            yPosition += 6;
+            
+            pdf.setFont('helvetica', 'normal');
+            for (let i = 0; i < 12; i++) {
+                if (yPosition > pageHeight - 15) {
+                    pdf.addPage();
+                    yPosition = margin;
+                }
+                
+                if (selectedYearData[i] > 0) {
+                    pdf.text(`${i + 1}월`, margin, yPosition);
+                    pdf.text(formatCurrency(selectedYearData[i]), margin + 50, yPosition);
+                    yPosition += 6;
+                }
+            }
+        }
+        
+        // 파일명 생성
+        const fileName = `${companyName}_${year2}-${year1}_매출비교_${new Date().toISOString().split('T')[0]}.pdf`;
+        
+        // PDF 저장
+        pdf.save(fileName);
+        
+        pdfDownloadBtn.disabled = false;
+        pdfDownloadBtn.textContent = '📄 PDF 다운로드';
+        
+    } catch (error) {
+        console.error('Error generating PDF:', error);
+        alert('PDF 생성 중 오류가 발생했습니다: ' + error.message);
+        pdfDownloadBtn.disabled = false;
+        pdfDownloadBtn.textContent = '📄 PDF 다운로드';
+    }
 }
