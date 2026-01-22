@@ -692,13 +692,17 @@ function updateChart() {
     salesChart.update();
 }
 
-// 연도별 데이터 가져오기
+// 연도별 데이터 가져오기 (월별 합산)
 function getYearlyData(year) {
     const yearData = allSalesData[year] || [];
     const monthlyData = new Array(12).fill(0);
     
+    // 같은 월의 여러 카테고리 데이터를 합산
     yearData.forEach(item => {
-        monthlyData[item.month - 1] = item.amount || 0;
+        const monthIndex = item.month - 1;
+        if (monthIndex >= 0 && monthIndex < 12) {
+            monthlyData[monthIndex] += parseFloat(item.amount) || 0;
+        }
     });
     
     return monthlyData;
@@ -730,21 +734,27 @@ function updateInsights() {
         growthDescriptionEl.textContent = '관리자에게 매출 데이터 등록을 요청하세요.';
     }
     
-    // 최고 매출 월 찾기
-    const max1 = Math.max(...data1);
-    const max2 = Math.max(...data2);
-    const maxMonth1 = data1.indexOf(max1) + 1;
-    const maxMonth2 = data2.indexOf(max2) + 1;
+    // 최고 매출 월 찾기 (월별 합산 데이터 사용)
+    const positiveData1 = data1.filter(v => v > 0);
+    const positiveData2 = data2.filter(v => v > 0);
     
-    if (max1 > 0 || max2 > 0) {
+    if (positiveData1.length > 0 || positiveData2.length > 0) {
+        const max1 = positiveData1.length > 0 ? Math.max(...positiveData1) : 0;
+        const max2 = positiveData2.length > 0 ? Math.max(...positiveData2) : 0;
+        const maxMonth1 = max1 > 0 ? data1.indexOf(max1) + 1 : 0;
+        const maxMonth2 = max2 > 0 ? data2.indexOf(max2) + 1 : 0;
+        
         if (maxMonth1 === maxMonth2 && max1 > 0 && max2 > 0) {
             peakTitleEl.textContent = `두 해 모두 ${maxMonth1}월에 최고 매출 기록`;
-            peakDescriptionEl.textContent = `${maxMonth1}월 최고 매출: ${year2}년 약 ${formatCompactCurrency(max2)}, ${year1}년 약 ${formatCompactCurrency(max1)}으로 ${maxMonth1}월에 매출이 집중되었습니다.`;
-        } else {
+            peakDescriptionEl.textContent = `${maxMonth1}월 최고 매출: ${year2}년 ${formatCurrency(max2)}, ${year1}년 ${formatCurrency(max1)}으로 ${maxMonth1}월에 매출이 집중되었습니다.`;
+        } else if (max1 > 0) {
             peakTitleEl.textContent = `${year1}년 최고 매출: ${maxMonth1}월`;
-            peakDescriptionEl.textContent = `${year1}년 ${maxMonth1}월에 ${formatCompactCurrency(max1)}로 최고 매출을 기록했습니다.`;
+            peakDescriptionEl.textContent = `${year1}년 ${maxMonth1}월에 ${formatCurrency(max1)}로 최고 매출을 기록했습니다.`;
+        } else {
+            peakTitleEl.textContent = `${year2}년 최고 매출: ${maxMonth2}월`;
+            peakDescriptionEl.textContent = `${year2}년 ${maxMonth2}월에 ${formatCurrency(max2)}로 최고 매출을 기록했습니다.`;
         }
-        peakMonthEl.textContent = `${maxMonth1}월`;
+        peakMonthEl.textContent = maxMonth1 > 0 ? `${maxMonth1}월` : (maxMonth2 > 0 ? `${maxMonth2}월` : '-월');
     } else {
         peakTitleEl.textContent = '최고 매출 월';
         peakDescriptionEl.textContent = '데이터가 없습니다.';
@@ -785,27 +795,28 @@ function generateDetailedInsights(year1, year2, data1, data2) {
     }
     
     // 2. 최고/최저 매출 월
-    const max1 = Math.max(...data1.filter(v => v > 0));
-    const min1 = Math.min(...data1.filter(v => v > 0));
-    const maxMonth1 = data1.indexOf(max1) + 1;
-    const minMonth1 = data1.indexOf(min1) + 1;
-    
-    if (max1 > 0) {
+    const positiveData1 = data1.filter(v => v > 0);
+    if (positiveData1.length > 0) {
+        const max1 = Math.max(...positiveData1);
+        const min1 = Math.min(...positiveData1);
+        const maxMonth1 = data1.indexOf(max1) + 1;
+        const minMonth1 = data1.indexOf(min1) + 1;
+        
         insights.push({
             icon: '🏆',
             iconClass: 'star',
             title: `${year1}년 최고 매출 월`,
             description: `<span class="highlight-value">${maxMonth1}월</span>에 <span class="highlight-positive">${formatCurrency(max1)}</span>로 가장 높은 매출을 기록했습니다.`
         });
-    }
-    
-    if (min1 > 0 && min1 !== max1) {
-        insights.push({
-            icon: '📍',
-            iconClass: 'info',
-            title: `${year1}년 최저 매출 월`,
-            description: `<span class="highlight-value">${minMonth1}월</span>에 <span class="highlight-negative">${formatCurrency(min1)}</span>로 가장 낮은 매출을 기록했습니다.`
-        });
+        
+        if (min1 !== max1) {
+            insights.push({
+                icon: '📍',
+                iconClass: 'info',
+                title: `${year1}년 최저 매출 월`,
+                description: `<span class="highlight-value">${minMonth1}월</span>에 <span class="highlight-negative">${formatCurrency(min1)}</span>로 가장 낮은 매출을 기록했습니다.`
+            });
+        }
     }
     
     // 3. 상반기 vs 하반기 비교
