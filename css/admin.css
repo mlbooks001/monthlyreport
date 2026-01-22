@@ -576,3 +576,39 @@
         grid-template-columns: 1fr;
     }
 }
+
+/* File Upload Styles */
+.file-upload-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 8px;
+}
+
+.file-select-btn {
+    padding: 12px 24px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: inherit;
+}
+
+.file-select-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.file-name {
+    color: #64748b;
+    font-size: 14px;
+    flex: 1;
+}
+
+.file-upload-section {
+    max-width: 1000px;
+}

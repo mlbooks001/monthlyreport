@@ -30,6 +30,22 @@ const uploadProgress = document.getElementById('uploadProgress');
 const progressFill = document.getElementById('progressFill');
 const progressText = document.getElementById('progressText');
 
+// File Upload Elements
+const fileCustomerSelect = document.getElementById('fileCustomerSelect');
+const fileUpload = document.getElementById('fileUpload');
+const fileSelectBtn = document.getElementById('fileSelectBtn');
+const fileName = document.getElementById('fileName');
+const filePreviewSection = document.getElementById('filePreviewSection');
+const filePreviewTable = document.getElementById('filePreviewTable');
+const filePreviewCount = document.getElementById('filePreviewCount');
+const fileUploadBtn = document.getElementById('fileUploadBtn');
+const clearFileBtn = document.getElementById('clearFileBtn');
+const clearFilePreview = document.getElementById('clearFilePreview');
+const fileMessage = document.getElementById('fileMessage');
+const fileUploadProgress = document.getElementById('fileUploadProgress');
+const fileProgressFill = document.getElementById('fileProgressFill');
+const fileProgressText = document.getElementById('fileProgressText');
+
 // Tab Elements
 const tabBtns = document.querySelectorAll('.tab-btn');
 const tabContents = document.querySelectorAll('.tab-content');
@@ -40,6 +56,7 @@ const ADMIN_EMAILS = ['anteater1@naver.com', 'mlbooks001@gmail.com'];
 // 현재 사용자
 let currentUser = null;
 let parsedData = []; // 파싱된 데이터 저장
+let fileParsedData = []; // 파일에서 파싱된 데이터 저장
 
 // 페이지 로드 시 인증 확인
 document.addEventListener('DOMContentLoaded', async () => {
@@ -803,14 +820,380 @@ function showBulkMessage(text, type) {
     }, 5000);
 }
 
-// 고객 선택 옵션 동기화 (bulkCustomerSelect에도 추가)
+// 고객 선택 옵션 동기화 (bulkCustomerSelect와 fileCustomerSelect에도 추가)
 function syncCustomerSelects(customers) {
     bulkCustomerSelect.innerHTML = '<option value="">고객을 선택하세요</option>';
+    fileCustomerSelect.innerHTML = '<option value="">고객을 선택하세요</option>';
     
     customers.forEach(customer => {
-        const option = document.createElement('option');
-        option.value = customer.id;
-        option.textContent = `${customer.user_metadata?.company_name || customer.company_name || '회사명 없음'} (${customer.email})`;
-        bulkCustomerSelect.appendChild(option);
+        const option1 = document.createElement('option');
+        option1.value = customer.id;
+        option1.textContent = `${customer.user_metadata?.company_name || customer.company_name || '회사명 없음'} (${customer.email})`;
+        bulkCustomerSelect.appendChild(option1);
+        
+        const option2 = document.createElement('option');
+        option2.value = customer.id;
+        option2.textContent = `${customer.user_metadata?.company_name || customer.company_name || '회사명 없음'} (${customer.email})`;
+        fileCustomerSelect.appendChild(option2);
     });
+}
+
+// ========================================
+// 파일 업로드 기능
+// ========================================
+
+// 파일 선택 버튼 클릭
+fileSelectBtn.addEventListener('click', () => {
+    fileUpload.click();
+});
+
+// 파일 선택 변경
+fileUpload.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    fileName.textContent = file.name;
+    fileMessage.className = 'message';
+    fileMessage.textContent = '';
+    fileParsedData = [];
+    filePreviewSection.style.display = 'none';
+    fileUploadBtn.disabled = true;
+    
+    try {
+        const fileType = file.name.split('.').pop().toLowerCase();
+        
+        if (fileType === 'xlsx' || fileType === 'xls') {
+            await parseExcelFile(file);
+        } else if (fileType === 'pdf') {
+            await parsePDFFile(file);
+        } else {
+            showFileMessage('지원하지 않는 파일 형식입니다. 엑셀(.xlsx, .xls) 또는 PDF(.pdf) 파일을 업로드해주세요.', 'error');
+            return;
+        }
+        
+        if (fileParsedData.length > 0) {
+            displayFilePreview(fileParsedData);
+            fileUploadBtn.disabled = !fileCustomerSelect.value;
+        } else {
+            showFileMessage('파일에서 매출 데이터를 찾을 수 없습니다. 파일 형식을 확인해주세요.', 'error');
+        }
+    } catch (error) {
+        console.error('Error parsing file:', error);
+        showFileMessage('파일 파싱 중 오류가 발생했습니다: ' + error.message, 'error');
+    }
+});
+
+// 고객 선택 변경 시 업로드 버튼 활성화
+fileCustomerSelect.addEventListener('change', () => {
+    fileUploadBtn.disabled = !fileCustomerSelect.value || fileParsedData.length === 0;
+});
+
+// 엑셀 파일 파싱
+async function parseExcelFile(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        
+        reader.onload = (e) => {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                
+                fileParsedData = [];
+                
+                // 모든 시트를 순회
+                workbook.SheetNames.forEach(sheetName => {
+                    const worksheet = workbook.Sheets[sheetName];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+                    
+                    // 데이터 파싱
+                    jsonData.forEach((row, rowIndex) => {
+                        if (rowIndex === 0) return; // 헤더 스킵
+                        
+                        const parsed = parseRowData(row);
+                        if (parsed) {
+                            fileParsedData.push(parsed);
+                        }
+                    });
+                });
+                
+                resolve();
+            } catch (error) {
+                reject(error);
+            }
+        };
+        
+        reader.onerror = reject;
+        reader.readAsArrayBuffer(file);
+    });
+}
+
+// PDF 파일 파싱
+async function parsePDFFile(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        
+        reader.onload = async (e) => {
+            try {
+                const typedArray = new Uint8Array(e.target.result);
+                const pdf = await pdfjsLib.getDocument({ data: typedArray }).promise;
+                
+                fileParsedData = [];
+                let fullText = '';
+                
+                // 모든 페이지 텍스트 추출
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    const pageText = textContent.items.map(item => item.str).join(' ');
+                    fullText += pageText + '\n';
+                }
+                
+                // 텍스트를 줄 단위로 분리하여 파싱
+                const lines = fullText.split('\n').filter(line => line.trim());
+                
+                lines.forEach(line => {
+                    const parsed = parseRowData(line.split(/\s+/));
+                    if (parsed) {
+                        fileParsedData.push(parsed);
+                    }
+                });
+                
+                resolve();
+            } catch (error) {
+                reject(error);
+            }
+        };
+        
+        reader.onerror = reject;
+        reader.readAsArrayBuffer(file);
+    });
+}
+
+// 행 데이터 파싱 (날짜, 매출액, 카테고리 추출)
+function parseRowData(row) {
+    if (!row || row.length < 2) return null;
+    
+    let year = null;
+    let month = null;
+    let amount = null;
+    let category = null;
+    
+    // 배열이 아닌 경우 공백으로 분리
+    const data = Array.isArray(row) ? row : (typeof row === 'string' ? row.split(/\s+/) : [row]);
+    
+    // 숫자와 날짜 패턴 찾기
+    for (let i = 0; i < data.length; i++) {
+        const item = String(data[i]).trim().replace(/,/g, '');
+        
+        // 날짜 패턴: YYYYMMDD 또는 YYYY-MM-DD
+        if (/^\d{8}$/.test(item)) {
+            year = parseInt(item.substring(0, 4));
+            month = parseInt(item.substring(4, 6));
+        } else if (/^\d{4}-\d{2}-\d{2}$/.test(item)) {
+            const parts = item.split('-');
+            year = parseInt(parts[0]);
+            month = parseInt(parts[1]);
+        } else if (/^\d{4}$/.test(item) && !year) {
+            year = parseInt(item);
+        } else if (/^[1-9]|1[0-2]$/.test(item) && !month && year) {
+            month = parseInt(item);
+        }
+        
+        // 매출액 패턴 (큰 숫자)
+        if (/^\d{6,}$/.test(item) && !amount) {
+            amount = parseFloat(item);
+        } else if (/^\d+\.?\d*$/.test(item) && parseFloat(item) > 1000 && !amount) {
+            amount = parseFloat(item);
+        }
+        
+        // 카테고리 (한글이나 영문 텍스트)
+        if (!category && /[가-힣a-zA-Z]/.test(item) && !year && !month && !amount) {
+            category = item;
+        }
+    }
+    
+    // 연도와 월이 없으면 현재 연도/월 사용
+    if (!year) {
+        const now = new Date();
+        year = now.getFullYear();
+    }
+    if (!month) {
+        month = new Date().getMonth() + 1;
+    }
+    
+    // 매출액이 없으면 null 반환
+    if (!amount || amount <= 0) return null;
+    
+    return {
+        year,
+        month,
+        amount,
+        category: category || '일반',
+        salesCount: null,
+        note: null
+    };
+}
+
+// 파일 미리보기 표시
+function displayFilePreview(data) {
+    if (!data || data.length === 0) {
+        filePreviewSection.style.display = 'none';
+        return;
+    }
+    
+    filePreviewCount.textContent = data.length;
+    
+    const tableHTML = `
+        <table class="preview-table">
+            <thead>
+                <tr>
+                    <th>연도</th>
+                    <th>월</th>
+                    <th>매출종류</th>
+                    <th>매출액</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${data.map(item => `
+                    <tr>
+                        <td>${item.year}년</td>
+                        <td>${item.month}월</td>
+                        <td>${item.category}</td>
+                        <td>${formatCurrency(item.amount)}</td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
+    
+    filePreviewTable.innerHTML = tableHTML;
+    filePreviewSection.style.display = 'block';
+}
+
+// 파일 업로드 버튼 클릭
+fileUploadBtn.addEventListener('click', async () => {
+    const userId = fileCustomerSelect.value;
+    
+    if (!userId) {
+        showFileMessage('고객을 선택해주세요.', 'error');
+        return;
+    }
+    
+    if (fileParsedData.length === 0) {
+        showFileMessage('등록할 데이터가 없습니다.', 'error');
+        return;
+    }
+    
+    fileUploadBtn.disabled = true;
+    fileUploadProgress.style.display = 'block';
+    fileProgressFill.style.width = '0%';
+    fileProgressText.textContent = '업로드 중... 0%';
+    
+    let successCount = 0;
+    let errorCount = 0;
+    
+    for (let i = 0; i < fileParsedData.length; i++) {
+        const item = fileParsedData[i];
+        
+        try {
+            // 기존 데이터 확인
+            const { data: existing } = await supabaseClient
+                .from('sales_reports')
+                .select('id')
+                .eq('user_id', userId)
+                .eq('year', item.year)
+                .eq('month', item.month)
+                .eq('category', item.category)
+                .single();
+            
+            if (existing) {
+                // 업데이트
+                const { error } = await supabaseClient
+                    .from('sales_reports')
+                    .update({
+                        amount: item.amount,
+                        sales_count: item.salesCount,
+                        note: item.note,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', existing.id);
+                
+                if (error) throw error;
+            } else {
+                // 새로 등록
+                const { error } = await supabaseClient
+                    .from('sales_reports')
+                    .insert({
+                        user_id: userId,
+                        year: item.year,
+                        month: item.month,
+                        category: item.category,
+                        amount: item.amount,
+                        sales_count: item.salesCount,
+                        note: item.note
+                    });
+                
+                if (error) throw error;
+            }
+            
+            successCount++;
+        } catch (error) {
+            console.error('Error uploading row:', item, error);
+            errorCount++;
+        }
+        
+        // 진행률 업데이트
+        const progress = Math.round(((i + 1) / fileParsedData.length) * 100);
+        fileProgressFill.style.width = progress + '%';
+        fileProgressText.textContent = `업로드 중... ${progress}% (${i + 1}/${fileParsedData.length})`;
+    }
+    
+    // 완료
+    fileUploadProgress.style.display = 'none';
+    fileUploadBtn.disabled = false;
+    
+    if (errorCount > 0) {
+        showFileMessage(`${successCount}건 등록 완료, ${errorCount}건 실패했습니다.`, 'error');
+    } else {
+        showFileMessage(`${successCount}건의 데이터가 성공적으로 등록되었습니다.`, 'success');
+        // 초기화
+        clearFileUpload();
+        await loadRecentSales();
+    }
+});
+
+// 파일 업로드 초기화
+clearFileBtn.addEventListener('click', clearFileUpload);
+clearFilePreview.addEventListener('click', () => {
+    fileParsedData = [];
+    filePreviewSection.style.display = 'none';
+    fileUploadBtn.disabled = true;
+    fileName.textContent = '선택된 파일이 없습니다';
+    fileUpload.value = '';
+});
+
+function clearFileUpload() {
+    fileParsedData = [];
+    filePreviewSection.style.display = 'none';
+    fileUploadBtn.disabled = true;
+    fileName.textContent = '선택된 파일이 없습니다';
+    fileUpload.value = '';
+    fileCustomerSelect.value = '';
+    fileMessage.className = 'message';
+    fileMessage.textContent = '';
+}
+
+// 파일 메시지 표시
+function showFileMessage(message, type) {
+    fileMessage.textContent = message;
+    fileMessage.className = `message ${type}`;
+    
+    setTimeout(() => {
+        fileMessage.className = 'message';
+    }, 5000);
+}
+
+// 통화 포맷 함수
+function formatCurrency(amount) {
+    return '₩' + Math.round(amount).toLocaleString('ko-KR');
 }
