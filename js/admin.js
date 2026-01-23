@@ -30,6 +30,7 @@ const progressText = document.getElementById('progressText');
 const fileCustomerSelect = document.getElementById('fileCustomerSelect');
 const fileUpload = document.getElementById('fileUpload');
 const fileSelectBtn = document.getElementById('fileSelectBtn');
+const templateDownloadBtn = document.getElementById('templateDownloadBtn');
 const fileName = document.getElementById('fileName');
 const filePreviewSection = document.getElementById('filePreviewSection');
 const filePreviewTable = document.getElementById('filePreviewTable');
@@ -708,6 +709,11 @@ fileSelectBtn.addEventListener('click', () => {
     fileUpload.click();
 });
 
+// 엑셀 템플릿 다운로드 버튼 클릭
+templateDownloadBtn.addEventListener('click', () => {
+    downloadExcelTemplate();
+});
+
 // 파일 선택 변경
 fileUpload.addEventListener('change', async (e) => {
     const file = e.target.files[0];
@@ -830,17 +836,99 @@ async function parsePDFFile(file) {
     });
 }
 
-// 행 데이터 파싱 (날짜, 매출액, 카테고리 추출)
-function parseRowData(row) {
-    if (!row || row.length < 2) return null;
+// 엑셀 템플릿 다운로드
+function downloadExcelTemplate() {
+    // 워크북 생성
+    const wb = XLSX.utils.book_new();
     
+    // 헤더 정의
+    const headers = ['연도', '월', '매출종류', '매출액', '판매건수', '비고'];
+    
+    // 예시 데이터
+    const exampleData = [
+        [2025, 1, '도서판매', 1000000, 50, '1월 도서판매'],
+        [2025, 1, '온라인판매', 500000, 30, '1월 온라인'],
+        [2025, 2, '도서판매', 1200000, 60, '2월 도서판매'],
+        [2025, 2, '온라인판매', 600000, 35, '2월 온라인']
+    ];
+    
+    // 데이터 배열 생성 (헤더 + 예시 데이터)
+    const data = [headers, ...exampleData];
+    
+    // 워크시트 생성
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    
+    // 컬럼 너비 설정
+    ws['!cols'] = [
+        { wch: 8 },  // 연도
+        { wch: 5 },  // 월
+        { wch: 15 }, // 매출종류
+        { wch: 15 }, // 매출액
+        { wch: 12 }, // 판매건수
+        { wch: 20 }  // 비고
+    ];
+    
+    // 헤더 행 스타일 (굵게)
+    const headerRange = XLSX.utils.decode_range(ws['!ref']);
+    for (let col = headerRange.s.c; col <= headerRange.e.c; col++) {
+        const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col });
+        if (!ws[cellAddress]) continue;
+        ws[cellAddress].s = {
+            font: { bold: true },
+            fill: { fgColor: { rgb: "E0E0E0" } },
+            alignment: { horizontal: "center", vertical: "center" }
+        };
+    }
+    
+    // 워크시트를 워크북에 추가
+    XLSX.utils.book_append_sheet(wb, ws, '매출데이터');
+    
+    // 파일명 생성
+    const fileName = `매출데이터_업로드양식_${new Date().toISOString().split('T')[0]}.xlsx`;
+    
+    // 파일 다운로드
+    XLSX.writeFile(wb, fileName);
+    
+    showFileMessage('엑셀 양식이 다운로드되었습니다. 양식에 데이터를 작성한 후 업로드해주세요.', 'success');
+}
+
+// 행 데이터 파싱 (템플릿 형식에 맞춤)
+function parseRowData(row) {
+    if (!row || row.length < 4) return null;
+    
+    // 배열이 아닌 경우 변환
+    const data = Array.isArray(row) ? row : (typeof row === 'string' ? row.split(/\t+/) : [row]);
+    
+    // 템플릿 형식: 연도, 월, 매출종류, 매출액, 판매건수(선택), 비고(선택)
+    if (data.length >= 4) {
+        const year = parseInt(data[0]);
+        const month = parseInt(data[1]);
+        const category = String(data[2] || '').trim();
+        const amount = parseNumber(data[3]);
+        const salesCount = data[4] ? parseInt(parseNumber(data[4])) : null;
+        const note = data[5] ? String(data[5]).trim() : null;
+        
+        // 유효성 검사
+        if (isNaN(year) || year < 2000 || year > 2100) return null;
+        if (isNaN(month) || month < 1 || month > 12) return null;
+        if (!category) return null;
+        if (isNaN(amount) || amount <= 0) return null;
+        
+        return {
+            year,
+            month,
+            amount,
+            category,
+            salesCount,
+            note
+        };
+    }
+    
+    // 기존 자동 인식 로직 (하위 호환성)
     let year = null;
     let month = null;
     let amount = null;
     let category = null;
-    
-    // 배열이 아닌 경우 공백으로 분리
-    const data = Array.isArray(row) ? row : (typeof row === 'string' ? row.split(/\s+/) : [row]);
     
     // 숫자와 날짜 패턴 찾기
     for (let i = 0; i < data.length; i++) {
