@@ -11,10 +11,6 @@ const amountInput = document.getElementById('amount');
 const salesCountInput = document.getElementById('salesCount');
 const noteInput = document.getElementById('note');
 const messageEl = document.getElementById('message');
-const customerListEl = document.getElementById('customerList');
-const recentSalesEl = document.getElementById('recentSales');
-const refreshCustomersBtn = document.getElementById('refreshCustomers');
-const refreshSalesBtn = document.getElementById('refreshSales');
 
 // Bulk Upload Elements
 const bulkCustomerSelect = document.getElementById('bulkCustomerSelect');
@@ -61,8 +57,7 @@ let fileParsedData = []; // 파일에서 파싱된 데이터 저장
 // 페이지 로드 시 인증 확인
 document.addEventListener('DOMContentLoaded', async () => {
     await checkAdminAuth();
-    await loadCustomers();
-    await loadRecentSales();
+    await loadCustomers(); // 고객 선택 드롭다운용으로만 사용
     await loadCategories();
     setCurrentMonth();
 });
@@ -100,10 +95,8 @@ function setCurrentMonth() {
     monthSelect.value = currentMonth;
 }
 
-// 고객 목록 로드
+// 고객 목록 로드 (고객 선택 드롭다운용)
 async function loadCustomers() {
-    customerListEl.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-    
     try {
         // auth.users에서 모든 사용자 가져오기 (관리자 제외)
         const { data: { users }, error } = await supabaseClient.auth.admin.listUsers();
@@ -115,7 +108,6 @@ async function loadCustomers() {
         }
         
         const customers = users.filter(user => !ADMIN_EMAILS.includes(user.email));
-        displayCustomers(customers);
         populateCustomerSelect(customers);
         
     } catch (error) {
@@ -133,13 +125,12 @@ async function loadCustomersFromProfiles() {
             .order('created_at', { ascending: false });
         
         if (error && error.code === '42P01') {
-            // 테이블이 없는 경우 - 기본 사용자 목록 표시
-            displayNoCustomers();
+            // 테이블이 없는 경우
+            populateCustomerSelect([]);
             return;
         }
         
         if (profiles && profiles.length > 0) {
-            displayCustomers(profiles);
             populateCustomerSelect(profiles);
         } else {
             // profiles 테이블은 있지만 데이터가 없는 경우 - auth users 직접 조회
@@ -161,59 +152,23 @@ async function loadCustomersDirectly() {
             .limit(100);
         
         if (error && error.code === '42P01') {
-            displayNoCustomers();
+            populateCustomerSelect([]);
             return;
         }
         
         if (salesData && salesData.length > 0) {
             const uniqueUserIds = [...new Set(salesData.map(s => s.user_id))];
             const customers = uniqueUserIds.map(id => ({ id, email: `User ${id.slice(0, 8)}...` }));
-            displayCustomers(customers);
             populateCustomerSelect(customers);
         } else {
-            displayNoCustomers();
+            populateCustomerSelect([]);
         }
     } catch (error) {
         console.error('Error:', error);
-        displayNoCustomers();
+        populateCustomerSelect([]);
     }
 }
 
-// 고객 없음 표시
-function displayNoCustomers() {
-    customerListEl.innerHTML = `
-        <div class="empty-state">
-            <h4>👥 등록된 고객이 없습니다</h4>
-            <p>회원가입한 고객이 여기에 표시됩니다.</p>
-        </div>
-    `;
-    // 모든 고객 선택 드롭다운 업데이트
-    if (customerSelect) customerSelect.innerHTML = '<option value="">등록된 고객이 없습니다</option>';
-    if (bulkCustomerSelect) bulkCustomerSelect.innerHTML = '<option value="">등록된 고객이 없습니다</option>';
-    if (fileCustomerSelect) fileCustomerSelect.innerHTML = '<option value="">등록된 고객이 없습니다</option>';
-}
-
-// 고객 목록 표시
-function displayCustomers(customers) {
-    if (!customers || customers.length === 0) {
-        displayNoCustomers();
-        return;
-    }
-    
-    const html = `
-        <div class="customer-grid">
-            ${customers.map(customer => `
-                <div class="customer-card">
-                    <div class="customer-name">${customer.user_metadata?.company_name || customer.company_name || '회사명 없음'}</div>
-                    <div class="customer-email">${customer.email}</div>
-                    <div class="customer-meta">ID: ${customer.id.slice(0, 8)}...</div>
-                </div>
-            `).join('')}
-        </div>
-    `;
-    
-    customerListEl.innerHTML = html;
-}
 
 // 고객 선택 옵션 채우기
 function populateCustomerSelect(customers) {
@@ -328,10 +283,9 @@ salesForm.addEventListener('submit', async (e) => {
             showMessage('매출 데이터가 등록되었습니다.', 'success');
         }
         
-        // 폼 초기화 및 목록 새로고침
+        // 폼 초기화
         salesForm.reset();
         setCurrentMonth();
-        await loadRecentSales();
         await loadCategories();
         
     } catch (error) {
@@ -366,111 +320,6 @@ async function loadCategories() {
     }
 }
 
-// 최근 매출 로드
-async function loadRecentSales() {
-    recentSalesEl.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-    
-    try {
-        const { data: sales, error } = await supabaseClient
-            .from('sales_reports')
-            .select('*')
-            .order('created_at', { ascending: false })
-            .limit(20);
-        
-        if (error) {
-            if (error.code === '42P01') {
-                recentSalesEl.innerHTML = `
-                    <div class="empty-state">
-                        <h4>📋 테이블이 없습니다</h4>
-                        <p>Supabase에서 sales_reports 테이블을 생성해주세요.</p>
-                    </div>
-                `;
-                return;
-            }
-            throw error;
-        }
-        
-        displayRecentSales(sales);
-        
-    } catch (error) {
-        console.error('Error loading sales:', error);
-        recentSalesEl.innerHTML = `
-            <div class="empty-state">
-                <h4>오류 발생</h4>
-                <p>${error.message}</p>
-            </div>
-        `;
-    }
-}
-
-// 최근 매출 표시
-function displayRecentSales(sales) {
-    if (!sales || sales.length === 0) {
-        recentSalesEl.innerHTML = `
-            <div class="empty-state">
-                <h4>📋 등록된 매출이 없습니다</h4>
-                <p>위 폼에서 매출 데이터를 등록해주세요.</p>
-            </div>
-        `;
-        return;
-    }
-    
-    const html = `
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>고객 ID</th>
-                    <th>기간</th>
-                    <th>매출종류</th>
-                    <th>매출액</th>
-                    <th>판매건수</th>
-                    <th>비고</th>
-                    <th>등록일</th>
-                    <th>관리</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${sales.map(sale => `
-                    <tr>
-                        <td>${sale.user_id.slice(0, 8)}...</td>
-                        <td>${sale.year}년 ${sale.month}월</td>
-                        <td><span class="category-badge">${sale.category || '일반'}</span></td>
-                        <td class="amount">${formatCurrency(sale.amount)}</td>
-                        <td>${sale.sales_count || '-'}</td>
-                        <td>${sale.note || '-'}</td>
-                        <td>${formatDate(sale.created_at)}</td>
-                        <td>
-                            <button class="delete-btn" onclick="deleteSale('${sale.id}')">삭제</button>
-                        </td>
-                    </tr>
-                `).join('')}
-            </tbody>
-        </table>
-    `;
-    
-    recentSalesEl.innerHTML = html;
-}
-
-// 매출 삭제
-async function deleteSale(id) {
-    if (!confirm('정말 삭제하시겠습니까?')) return;
-    
-    try {
-        const { error } = await supabaseClient
-            .from('sales_reports')
-            .delete()
-            .eq('id', id);
-        
-        if (error) throw error;
-        
-        showMessage('삭제되었습니다.', 'success');
-        await loadRecentSales();
-        
-    } catch (error) {
-        console.error('Error deleting:', error);
-        showMessage('삭제 중 오류가 발생했습니다.', 'error');
-    }
-}
 
 // 메시지 표시
 function showMessage(text, type) {
@@ -493,9 +342,6 @@ function formatDate(dateString) {
     return date.toLocaleDateString('ko-KR');
 }
 
-// 새로고침 버튼
-refreshCustomersBtn.addEventListener('click', loadCustomers);
-refreshSalesBtn.addEventListener('click', loadRecentSales);
 
 // ==========================================
 // 탭 메뉴 기능
@@ -822,9 +668,8 @@ bulkUploadBtn.addEventListener('click', async () => {
         showBulkMessage(`${successCount}건의 매출 데이터가 성공적으로 등록되었습니다.`, 'success');
     }
     
-    // 초기화 및 새로고침
+    // 초기화
     clearBulkForm();
-    await loadRecentSales();
 });
 
 // 일괄 등록 폼 초기화
@@ -1174,7 +1019,6 @@ fileUploadBtn.addEventListener('click', async () => {
         showFileMessage(`${successCount}건의 데이터가 성공적으로 등록되었습니다.`, 'success');
         // 초기화
         clearFileUpload();
-        await loadRecentSales();
     }
 });
 
