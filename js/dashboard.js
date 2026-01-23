@@ -805,49 +805,137 @@ async function downloadPDF() {
     pdfDownloadBtn.textContent = 'PDF 생성 중...';
     
     try {
-        // 1. 헤더 정보
-        pdf.setFontSize(18);
-        pdf.setFont('helvetica', 'bold');
         const companyName = companyNameEl.textContent || '고객';
         const year1 = compareYear1.value;
         const year2 = compareYear2.value;
-        pdf.text(`${companyName} ${year2}-${year1} 매출 비교 리포트`, pageWidth / 2, yPosition, { align: 'center' });
-        yPosition += 10;
-        
-        pdf.setFontSize(10);
-        pdf.setFont('helvetica', 'normal');
-        const currentDate = new Date().toLocaleDateString('ko-KR');
-        pdf.text(`생성일: ${currentDate}`, pageWidth / 2, yPosition, { align: 'center' });
-        yPosition += 15;
-        
-        // 2. 요약 정보 카드
-        pdf.setFontSize(12);
-        pdf.setFont('helvetica', 'bold');
-        pdf.text('📊 요약 정보', margin, yPosition);
-        yPosition += 8;
-        
-        pdf.setFontSize(10);
-        pdf.setFont('helvetica', 'normal');
         const data1 = getYearlyData(year1);
         const data2 = getYearlyData(year2);
         const total1 = data1.reduce((a, b) => a + b, 0);
         const total2 = data2.reduce((a, b) => a + b, 0);
         const growthRate = total2 > 0 ? ((total1 - total2) / total2 * 100).toFixed(1) : 0;
         
-        pdf.text(`• ${year1}년 총 매출: ${formatCurrency(total1)}`, margin + 5, yPosition);
-        yPosition += 6;
-        pdf.text(`• ${year2}년 총 매출: ${formatCurrency(total2)}`, margin + 5, yPosition);
-        yPosition += 6;
-        pdf.text(`• 전년 대비: ${growthRate >= 0 ? '+' : ''}${growthRate}% ${growthRate >= 0 ? '성장' : '감소'}`, margin + 5, yPosition);
-        yPosition += 10;
+        // 1. 헤더 정보 (이미지로 변환)
+        const headerHTML = `
+            <div style="font-family: 'Noto Sans KR', sans-serif; text-align: center; padding: 20px; background: white;">
+                <h1 style="font-size: 24px; font-weight: bold; margin: 0 0 10px 0; color: #1e293b;">
+                    ${companyName} ${year2}-${year1} 매출 비교 리포트
+                </h1>
+                <p style="font-size: 12px; color: #64748b; margin: 0;">
+                    생성일: ${new Date().toLocaleDateString('ko-KR')}
+                </p>
+            </div>
+        `;
+        
+        const headerDiv = document.createElement('div');
+        headerDiv.innerHTML = headerHTML;
+        headerDiv.style.position = 'absolute';
+        headerDiv.style.left = '-9999px';
+        headerDiv.style.width = '210mm';
+        document.body.appendChild(headerDiv);
+        
+        try {
+            const headerImage = await html2canvas(headerDiv, {
+                backgroundColor: '#ffffff',
+                scale: 2,
+                logging: false
+            });
+            
+            const headerImgData = headerImage.toDataURL('image/png');
+            const headerImgWidth = pageWidth - (margin * 2);
+            const headerImgHeight = (headerImage.height * headerImgWidth) / headerImage.width;
+            
+            pdf.addImage(headerImgData, 'PNG', margin, yPosition, headerImgWidth, headerImgHeight);
+            yPosition += headerImgHeight + 10;
+        } catch (error) {
+            console.error('Error capturing header:', error);
+            yPosition += 20;
+        } finally {
+            document.body.removeChild(headerDiv);
+        }
+        
+        // 2. 요약 정보 카드 (이미지로 변환)
+        const summaryHTML = `
+            <div style="font-family: 'Noto Sans KR', sans-serif; padding: 20px; background: white; border-radius: 8px;">
+                <h2 style="font-size: 16px; font-weight: bold; margin: 0 0 15px 0; color: #1e293b;">📊 요약 정보</h2>
+                <ul style="list-style: none; padding: 0; margin: 0; font-size: 14px; color: #334155; line-height: 1.8;">
+                    <li>• ${year1}년 총 매출: ${formatCurrency(total1)}</li>
+                    <li>• ${year2}년 총 매출: ${formatCurrency(total2)}</li>
+                    <li>• 전년 대비: ${growthRate >= 0 ? '+' : ''}${growthRate}% ${growthRate >= 0 ? '성장' : '감소'}</li>
+                </ul>
+            </div>
+        `;
+        
+        const summaryDiv = document.createElement('div');
+        summaryDiv.innerHTML = summaryHTML;
+        summaryDiv.style.position = 'absolute';
+        summaryDiv.style.left = '-9999px';
+        summaryDiv.style.width = '180mm';
+        document.body.appendChild(summaryDiv);
+        
+        try {
+            const summaryImage = await html2canvas(summaryDiv, {
+                backgroundColor: '#ffffff',
+                scale: 2,
+                logging: false
+            });
+            
+            const summaryImgData = summaryImage.toDataURL('image/png');
+            const summaryImgWidth = pageWidth - (margin * 2);
+            const summaryImgHeight = (summaryImage.height * summaryImgWidth) / summaryImage.width;
+            
+            if (yPosition + summaryImgHeight > pageHeight - margin) {
+                pdf.addPage();
+                yPosition = margin;
+            }
+            
+            pdf.addImage(summaryImgData, 'PNG', margin, yPosition, summaryImgWidth, summaryImgHeight);
+            yPosition += summaryImgHeight + 10;
+        } catch (error) {
+            console.error('Error capturing summary:', error);
+            yPosition += 30;
+        } finally {
+            document.body.removeChild(summaryDiv);
+        }
         
         // 3. 차트 이미지 추가
         const chartCanvas = document.getElementById('salesChart');
         if (chartCanvas) {
-            pdf.setFontSize(12);
-            pdf.setFont('helvetica', 'bold');
-            pdf.text('📈 월별 매출 비교 차트', margin, yPosition);
-            yPosition += 5;
+            // 차트 제목 추가
+            const chartTitleHTML = `
+                <div style="font-family: 'Noto Sans KR', sans-serif; padding: 10px 0; background: white;">
+                    <h2 style="font-size: 16px; font-weight: bold; margin: 0; color: #1e293b;">📈 월별 매출 비교 차트</h2>
+                </div>
+            `;
+            
+            const chartTitleDiv = document.createElement('div');
+            chartTitleDiv.innerHTML = chartTitleHTML;
+            chartTitleDiv.style.position = 'absolute';
+            chartTitleDiv.style.left = '-9999px';
+            chartTitleDiv.style.width = '180mm';
+            document.body.appendChild(chartTitleDiv);
+            
+            try {
+                const chartTitleImage = await html2canvas(chartTitleDiv, {
+                    backgroundColor: '#ffffff',
+                    scale: 2,
+                    logging: false
+                });
+                
+                const chartTitleImgData = chartTitleImage.toDataURL('image/png');
+                const chartTitleImgWidth = pageWidth - (margin * 2);
+                const chartTitleImgHeight = (chartTitleImage.height * chartTitleImgWidth) / chartTitleImage.width;
+                
+                if (yPosition + chartTitleImgHeight > pageHeight - margin) {
+                    pdf.addPage();
+                    yPosition = margin;
+                }
+                
+                pdf.addImage(chartTitleImgData, 'PNG', margin, yPosition, chartTitleImgWidth, chartTitleImgHeight);
+                yPosition += chartTitleImgHeight + 5;
+                document.body.removeChild(chartTitleDiv);
+            } catch (error) {
+                document.body.removeChild(chartTitleDiv);
+            }
             
             try {
                 const chartImage = await html2canvas(chartCanvas, {
@@ -870,77 +958,93 @@ async function downloadPDF() {
                 yPosition += imgHeight + 10;
             } catch (error) {
                 console.error('Error capturing chart:', error);
-                pdf.text('차트 이미지를 생성할 수 없습니다.', margin, yPosition);
-                yPosition += 10;
             }
         }
         
-        // 4. 월별 매출 데이터 테이블
+        // 4. 월별 매출 데이터 테이블 (이미지로 변환)
         if (yPosition > pageHeight - 50) {
             pdf.addPage();
             yPosition = margin;
         }
         
-        pdf.setFontSize(12);
-        pdf.setFont('helvetica', 'bold');
-        pdf.text('📋 월별 매출 상세', margin, yPosition);
-        yPosition += 8;
-        
-        // 테이블 헤더
-        pdf.setFontSize(9);
-        pdf.setFont('helvetica', 'bold');
-        const colWidths = [20, 30, 30, 30, 30];
-        const headers = ['월', `${year1}년`, `${year2}년`, '차이', '증감률'];
-        let xPos = margin;
-        
-        headers.forEach((header, i) => {
-            pdf.text(header, xPos, yPosition);
-            xPos += colWidths[i];
-        });
-        yPosition += 6;
-        
-        // 테이블 데이터
-        pdf.setFont('helvetica', 'normal');
         const months = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
+        let tableRows = '';
         
         for (let i = 0; i < 12; i++) {
-            if (yPosition > pageHeight - 15) {
-                pdf.addPage();
-                yPosition = margin;
-            }
-            
             const month1 = data1[i] || 0;
             const month2 = data2[i] || 0;
             const diff = month1 - month2;
             const changeRate = month2 > 0 ? ((diff / month2) * 100).toFixed(1) : (month1 > 0 ? '100.0' : '0.0');
             
-            xPos = margin;
-            pdf.text(months[i], xPos, yPosition);
-            xPos += colWidths[0];
-            pdf.text(formatCurrency(month1), xPos, yPosition);
-            xPos += colWidths[1];
-            pdf.text(formatCurrency(month2), xPos, yPosition);
-            xPos += colWidths[2];
-            pdf.text(formatCurrency(diff), xPos, yPosition);
-            xPos += colWidths[3];
-            pdf.text(`${changeRate >= 0 ? '+' : ''}${changeRate}%`, xPos, yPosition);
-            
-            yPosition += 6;
+            tableRows += `
+                <tr style="border-bottom: 1px solid #e2e8f0;">
+                    <td style="padding: 8px; text-align: left;">${months[i]}</td>
+                    <td style="padding: 8px; text-align: right;">${formatCurrency(month1)}</td>
+                    <td style="padding: 8px; text-align: right;">${formatCurrency(month2)}</td>
+                    <td style="padding: 8px; text-align: right;">${formatCurrency(diff)}</td>
+                    <td style="padding: 8px; text-align: right;">${changeRate >= 0 ? '+' : ''}${changeRate}%</td>
+                </tr>
+            `;
         }
         
-        // 5. 통계 카드 정보
+        const tableHTML = `
+            <div style="font-family: 'Noto Sans KR', sans-serif; padding: 20px; background: white;">
+                <h2 style="font-size: 16px; font-weight: bold; margin: 0 0 15px 0; color: #1e293b;">📋 월별 매출 상세</h2>
+                <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                    <thead>
+                        <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0;">
+                            <th style="padding: 10px; text-align: left; font-weight: 600; color: #475569;">월</th>
+                            <th style="padding: 10px; text-align: right; font-weight: 600; color: #475569;">${year1}년</th>
+                            <th style="padding: 10px; text-align: right; font-weight: 600; color: #475569;">${year2}년</th>
+                            <th style="padding: 10px; text-align: right; font-weight: 600; color: #475569;">차이</th>
+                            <th style="padding: 10px; text-align: right; font-weight: 600; color: #475569;">증감률</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${tableRows}
+                    </tbody>
+                </table>
+            </div>
+        `;
+        
+        const tableDiv = document.createElement('div');
+        tableDiv.innerHTML = tableHTML;
+        tableDiv.style.position = 'absolute';
+        tableDiv.style.left = '-9999px';
+        tableDiv.style.width = '180mm';
+        document.body.appendChild(tableDiv);
+        
+        try {
+            const tableImage = await html2canvas(tableDiv, {
+                backgroundColor: '#ffffff',
+                scale: 2,
+                logging: false
+            });
+            
+            const tableImgData = tableImage.toDataURL('image/png');
+            const tableImgWidth = pageWidth - (margin * 2);
+            const tableImgHeight = (tableImage.height * tableImgWidth) / tableImage.width;
+            
+            if (yPosition + tableImgHeight > pageHeight - margin) {
+                pdf.addPage();
+                yPosition = margin;
+            }
+            
+            pdf.addImage(tableImgData, 'PNG', margin, yPosition, tableImgWidth, tableImgHeight);
+            yPosition += tableImgHeight + 10;
+            document.body.removeChild(tableDiv);
+        } catch (error) {
+            console.error('Error capturing table:', error);
+            document.body.removeChild(tableDiv);
+            yPosition += 50;
+        }
+        
+        // 5. 통계 카드 정보 (이미지로 변환)
         if (yPosition > pageHeight - 40) {
             pdf.addPage();
             yPosition = margin;
         }
         
-        pdf.setFontSize(12);
-        pdf.setFont('helvetica', 'bold');
-        pdf.text('💰 주요 통계', margin, yPosition);
-        yPosition += 8;
-        
-        pdf.setFontSize(10);
-        pdf.setFont('helvetica', 'normal');
         const currentMonth = new Date().getMonth() + 1;
         const currentYear = new Date().getFullYear();
         const selectedYear = parseInt(yearFilter.value);
@@ -956,17 +1060,50 @@ async function downloadPDF() {
             lastMonthSales = data1[10] || 0;
         }
         
-        pdf.text(`• 이번 달 매출: ${formatCurrency(currentMonthSales)}`, margin + 5, yPosition);
-        yPosition += 6;
-        pdf.text(`• 지난 달 매출: ${formatCurrency(lastMonthSales)}`, margin + 5, yPosition);
-        yPosition += 6;
-        pdf.text(`• 올해 누적 매출: ${formatCurrency(total1)}`, margin + 5, yPosition);
-        yPosition += 6;
-        
         const monthsWithData = data1.filter(v => v > 0).length;
         const avgSales = monthsWithData > 0 ? total1 / monthsWithData : 0;
-        pdf.text(`• 평균 월 매출: ${formatCurrency(avgSales)}`, margin + 5, yPosition);
-        yPosition += 15;
+        
+        const statsHTML = `
+            <div style="font-family: 'Noto Sans KR', sans-serif; padding: 20px; background: white; border-radius: 8px;">
+                <h2 style="font-size: 16px; font-weight: bold; margin: 0 0 15px 0; color: #1e293b;">💰 주요 통계</h2>
+                <ul style="list-style: none; padding: 0; margin: 0; font-size: 14px; color: #334155; line-height: 1.8;">
+                    <li>• 이번 달 매출: ${formatCurrency(currentMonthSales)}</li>
+                    <li>• 지난 달 매출: ${formatCurrency(lastMonthSales)}</li>
+                    <li>• 올해 누적 매출: ${formatCurrency(total1)}</li>
+                    <li>• 평균 월 매출: ${formatCurrency(avgSales)}</li>
+                </ul>
+            </div>
+        `;
+        
+        const statsDiv = document.createElement('div');
+        statsDiv.innerHTML = statsHTML;
+        statsDiv.style.position = 'absolute';
+        statsDiv.style.left = '-9999px';
+        statsDiv.style.width = '180mm';
+        document.body.appendChild(statsDiv);
+        
+        try {
+            const statsImage = await html2canvas(statsDiv, {
+                backgroundColor: '#ffffff',
+                scale: 2,
+                logging: false
+            });
+            
+            const statsImgData = statsImage.toDataURL('image/png');
+            const statsImgWidth = pageWidth - (margin * 2);
+            const statsImgHeight = (statsImage.height * statsImgWidth) / statsImage.width;
+            
+            if (yPosition + statsImgHeight > pageHeight - margin) {
+                pdf.addPage();
+                yPosition = margin;
+            }
+            
+            pdf.addImage(statsImgData, 'PNG', margin, yPosition, statsImgWidth, statsImgHeight);
+            document.body.removeChild(statsDiv);
+        } catch (error) {
+            console.error('Error capturing stats:', error);
+            document.body.removeChild(statsDiv);
+        }
         
         // 6. 월별 매출 현황 테이블 (tableContainer의 내용)
         const tableElement = tableContainer.querySelector('.data-table');
