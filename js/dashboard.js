@@ -965,51 +965,85 @@ async function downloadPDF() {
             document.body.removeChild(headerDiv);
         }
         
-        // 2. 요약 정보 카드 (이미지로 변환)
-        const summaryHTML = `
-            <div style="font-family: 'Noto Sans KR', sans-serif; padding: 20px; background: white; border-radius: 8px;">
-                <h2 style="font-size: 16px; font-weight: bold; margin: 0 0 15px 0; color: #1e293b;">📊 요약 정보</h2>
-                <ul style="list-style: none; padding: 0; margin: 0; font-size: 14px; color: #334155; line-height: 1.8;">
-                    <li>• ${year1}년 총 매출: ${formatCurrency(total1)}</li>
-                    <li>• ${year2}년 총 매출: ${formatCurrency(total2)}</li>
-                    <li>• 전년 대비: ${growthRate >= 0 ? '+' : ''}${growthRate}% ${growthRate >= 0 ? '성장' : '감소'}</li>
-                </ul>
-            </div>
-        `;
-        
-        const summaryDiv = document.createElement('div');
-        summaryDiv.innerHTML = summaryHTML;
-        summaryDiv.style.position = 'absolute';
-        summaryDiv.style.left = '-9999px';
-        summaryDiv.style.width = '180mm';
-        document.body.appendChild(summaryDiv);
-        
-        try {
-            const summaryImage = await html2canvas(summaryDiv, {
-                backgroundColor: '#ffffff',
-                scale: 2,
-                logging: false
-            });
-            
-            const summaryImgData = summaryImage.toDataURL('image/png');
-            const summaryImgWidth = pageWidth - (margin * 2);
-            const summaryImgHeight = (summaryImage.height * summaryImgWidth) / summaryImage.width;
-            
-            if (yPosition + summaryImgHeight > pageHeight - margin) {
-                pdf.addPage();
-                yPosition = margin;
+        // 2. Welcome Section (이미지로 변환)
+        const welcomeSection = document.querySelector('.welcome-section');
+        if (welcomeSection) {
+            try {
+                const welcomeImage = await html2canvas(welcomeSection, {
+                    backgroundColor: '#ffffff',
+                    scale: 2,
+                    logging: false
+                });
+                
+                const welcomeImgData = welcomeImage.toDataURL('image/png');
+                const welcomeImgWidth = pageWidth - (margin * 2);
+                const welcomeImgHeight = (welcomeImage.height * welcomeImgWidth) / welcomeImage.width;
+                
+                if (yPosition + welcomeImgHeight > pageHeight - margin) {
+                    pdf.addPage();
+                    yPosition = margin;
+                }
+                
+                pdf.addImage(welcomeImgData, 'PNG', margin, yPosition, welcomeImgWidth, welcomeImgHeight);
+                yPosition += welcomeImgHeight + 10;
+            } catch (error) {
+                console.error('Error capturing welcome section:', error);
             }
-            
-            pdf.addImage(summaryImgData, 'PNG', margin, yPosition, summaryImgWidth, summaryImgHeight);
-            yPosition += summaryImgHeight + 10;
-        } catch (error) {
-            console.error('Error capturing summary:', error);
-            yPosition += 30;
-        } finally {
-            document.body.removeChild(summaryDiv);
         }
         
-        // 3. 차트 이미지 추가
+        // 3. Insights Section (이미지로 변환)
+        const insightsSection = document.querySelector('.insights-section');
+        if (insightsSection) {
+            try {
+                const insightsImage = await html2canvas(insightsSection, {
+                    backgroundColor: '#ffffff',
+                    scale: 2,
+                    logging: false
+                });
+                
+                const insightsImgData = insightsImage.toDataURL('image/png');
+                const insightsImgWidth = pageWidth - (margin * 2);
+                const insightsImgHeight = (insightsImage.height * insightsImgWidth) / insightsImage.width;
+                
+                if (yPosition + insightsImgHeight > pageHeight - margin) {
+                    pdf.addPage();
+                    yPosition = margin;
+                }
+                
+                pdf.addImage(insightsImgData, 'PNG', margin, yPosition, insightsImgWidth, insightsImgHeight);
+                yPosition += insightsImgHeight + 10;
+            } catch (error) {
+                console.error('Error capturing insights section:', error);
+            }
+        }
+        
+        // 4. Stats Cards (이미지로 변환)
+        const statsGrid = document.querySelector('.stats-grid');
+        if (statsGrid) {
+            try {
+                const statsImage = await html2canvas(statsGrid, {
+                    backgroundColor: '#ffffff',
+                    scale: 2,
+                    logging: false
+                });
+                
+                const statsImgData = statsImage.toDataURL('image/png');
+                const statsImgWidth = pageWidth - (margin * 2);
+                const statsImgHeight = (statsImage.height * statsImgWidth) / statsImage.width;
+                
+                if (yPosition + statsImgHeight > pageHeight - margin) {
+                    pdf.addPage();
+                    yPosition = margin;
+                }
+                
+                pdf.addImage(statsImgData, 'PNG', margin, yPosition, statsImgWidth, statsImgHeight);
+                yPosition += statsImgHeight + 10;
+            } catch (error) {
+                console.error('Error capturing stats cards:', error);
+            }
+        }
+        
+        // 5. 차트 이미지 추가
         const chartCanvas = document.getElementById('salesChart');
         if (chartCanvas) {
             // 차트 제목 추가
@@ -1073,7 +1107,7 @@ async function downloadPDF() {
             }
         }
         
-        // 4. 월별 매출 데이터 테이블 (이미지로 변환)
+        // 6. 월별 매출 데이터 테이블 (이미지로 변환)
         if (yPosition > pageHeight - 50) {
             pdf.addPage();
             yPosition = margin;
@@ -1151,73 +1185,7 @@ async function downloadPDF() {
             yPosition += 50;
         }
         
-        // 5. 통계 카드 정보 (이미지로 변환)
-        if (yPosition > pageHeight - 40) {
-            pdf.addPage();
-            yPosition = margin;
-        }
-        
-        const currentMonth = new Date().getMonth() + 1;
-        const currentYear = new Date().getFullYear();
-        const statsSelectedYear = parseInt(yearFilter.value);
-        
-        let currentMonthSales = 0;
-        let lastMonthSales = 0;
-        
-        if (statsSelectedYear === currentYear) {
-            currentMonthSales = data1[currentMonth - 1] || 0;
-            lastMonthSales = data1[currentMonth - 2] || 0;
-        } else {
-            currentMonthSales = data1[11] || 0;
-            lastMonthSales = data1[10] || 0;
-        }
-        
-        const monthsWithData = data1.filter(v => v > 0).length;
-        const avgSales = monthsWithData > 0 ? total1 / monthsWithData : 0;
-        
-        const statsHTML = `
-            <div style="font-family: 'Noto Sans KR', sans-serif; padding: 20px; background: white; border-radius: 8px;">
-                <h2 style="font-size: 16px; font-weight: bold; margin: 0 0 15px 0; color: #1e293b;">💰 주요 통계</h2>
-                <ul style="list-style: none; padding: 0; margin: 0; font-size: 14px; color: #334155; line-height: 1.8;">
-                    <li>• 이번 달 매출: ${formatCurrency(currentMonthSales)}</li>
-                    <li>• 지난 달 매출: ${formatCurrency(lastMonthSales)}</li>
-                    <li>• 올해 누적 매출: ${formatCurrency(total1)}</li>
-                    <li>• 평균 월 매출: ${formatCurrency(avgSales)}</li>
-                </ul>
-            </div>
-        `;
-        
-        const statsDiv = document.createElement('div');
-        statsDiv.innerHTML = statsHTML;
-        statsDiv.style.position = 'absolute';
-        statsDiv.style.left = '-9999px';
-        statsDiv.style.width = '180mm';
-        document.body.appendChild(statsDiv);
-        
-        try {
-            const statsImage = await html2canvas(statsDiv, {
-                backgroundColor: '#ffffff',
-                scale: 2,
-                logging: false
-            });
-            
-            const statsImgData = statsImage.toDataURL('image/png');
-            const statsImgWidth = pageWidth - (margin * 2);
-            const statsImgHeight = (statsImage.height * statsImgWidth) / statsImage.width;
-            
-            if (yPosition + statsImgHeight > pageHeight - margin) {
-                pdf.addPage();
-                yPosition = margin;
-            }
-            
-            pdf.addImage(statsImgData, 'PNG', margin, yPosition, statsImgWidth, statsImgHeight);
-            document.body.removeChild(statsDiv);
-        } catch (error) {
-            console.error('Error capturing stats:', error);
-            document.body.removeChild(statsDiv);
-        }
-        
-        // 6. 월별 매출 현황 테이블 (tableContainer의 내용) - 이미지로 변환
+        // 7. 월별 매출 현황 테이블 (tableContainer의 내용) - 이미지로 변환
         if (yPosition > pageHeight - 50) {
             pdf.addPage();
             yPosition = margin;
