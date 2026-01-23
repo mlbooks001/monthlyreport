@@ -18,16 +18,35 @@ let allSalesData = {};
 
 // 페이지 로드 시 인증 확인
 document.addEventListener('DOMContentLoaded', async () => {
-    // DOM 요소 초기화
-    initDOMElements();
-    
-    // 이벤트 리스너 설정
-    setupEventListeners();
-    
-    await checkAuth();
-    await loadAllSalesData();
-    await loadSalesData();
-    initChart();
+    try {
+        // Supabase 클라이언트 확인
+        if (!supabaseClient) {
+            console.error('Supabase 클라이언트가 초기화되지 않았습니다.');
+            alert('데이터베이스 연결 오류가 발생했습니다. 페이지를 새로고침해주세요.');
+            return;
+        }
+        
+        // DOM 요소 초기화
+        initDOMElements();
+        
+        // 이벤트 리스너 설정
+        setupEventListeners();
+        
+        // 인증 확인
+        await checkAuth();
+        
+        // 사용자 정보가 있을 때만 데이터 로드
+        if (currentUser && currentUser.id) {
+            await loadAllSalesData();
+            await loadSalesData();
+            initChart();
+        } else {
+            console.warn('사용자 정보가 없어 데이터를 로드할 수 없습니다.');
+        }
+    } catch (error) {
+        console.error('페이지 초기화 중 오류:', error);
+        alert('페이지 로드 중 오류가 발생했습니다: ' + error.message);
+    }
 });
 
 // DOM 요소 초기화
@@ -145,21 +164,48 @@ function setupEventListeners() {
 
 // 인증 확인
 async function checkAuth() {
-    const { data: { session } } = await supabaseClient.auth.getSession();
-    
-    if (!session) {
-        window.location.href = 'index.html';
-        return;
+    try {
+        if (!supabaseClient) {
+            console.error('Supabase 클라이언트가 초기화되지 않았습니다.');
+            alert('데이터베이스 연결 오류가 발생했습니다. 페이지를 새로고침해주세요.');
+            return;
+        }
+        
+        const { data: { session }, error } = await supabaseClient.auth.getSession();
+        
+        if (error) {
+            console.error('세션 확인 오류:', error);
+            alert('인증 확인 중 오류가 발생했습니다: ' + error.message);
+            return;
+        }
+        
+        if (!session) {
+            window.location.href = 'index.html';
+            return;
+        }
+        
+        currentUser = session.user;
+        if (userEmailEl) userEmailEl.textContent = currentUser.email;
+        if (companyNameEl) companyNameEl.textContent = currentUser.user_metadata?.company_name || '고객';
+    } catch (error) {
+        console.error('인증 확인 중 예외 발생:', error);
+        alert('인증 확인 중 오류가 발생했습니다: ' + error.message);
     }
-    
-    currentUser = session.user;
-    userEmailEl.textContent = currentUser.email;
-    companyNameEl.textContent = currentUser.user_metadata?.company_name || '고객';
 }
 
 // 모든 연도의 매출 데이터 로드
 async function loadAllSalesData() {
     try {
+        if (!supabaseClient) {
+            console.error('Supabase 클라이언트가 초기화되지 않았습니다.');
+            return;
+        }
+        
+        if (!currentUser || !currentUser.id) {
+            console.error('사용자 정보가 없습니다.');
+            return;
+        }
+        
         const { data: salesData, error } = await supabaseClient
             .from('sales_reports')
             .select('*')
@@ -167,13 +213,31 @@ async function loadAllSalesData() {
             .order('year', { ascending: true })
             .order('month', { ascending: true });
         
-        if (error) throw error;
+        if (error) {
+            console.error('매출 데이터 로드 오류:', error);
+            
+            // 테이블이 없는 경우
+            if (error.code === '42P01' || error.message.includes('does not exist')) {
+                console.warn('sales_reports 테이블이 존재하지 않습니다.');
+                allSalesData = {};
+                return;
+            }
+            
+            // RLS 정책 오류
+            if (error.code === '42501' || error.message.includes('permission denied')) {
+                console.warn('데이터 접근 권한이 없습니다.');
+                allSalesData = {};
+                return;
+            }
+            
+            throw error;
+        }
         
         // 연도별로 데이터 정리
         allSalesData = {};
         const categories = new Set();
         
-        if (salesData) {
+        if (salesData && salesData.length > 0) {
             salesData.forEach(item => {
                 if (!allSalesData[item.year]) {
                     allSalesData[item.year] = [];
@@ -188,10 +252,13 @@ async function loadAllSalesData() {
         }
         
         // 카테고리 필터 업데이트
-        updateCategoryFilter(Array.from(categories));
+        if (categoryFilter) {
+            updateCategoryFilter(Array.from(categories));
+        }
         
     } catch (error) {
         console.error('Error loading all sales data:', error);
+        allSalesData = {};
     }
 }
 
@@ -209,6 +276,11 @@ function updateCategoryFilter(categories) {
 
 // 매출 데이터 로드
 async function loadSalesData() {
+    if (!tableContainer || !yearFilter || !categoryFilter) {
+        console.error('필수 DOM 요소가 없습니다.');
+        return;
+    }
+    
     const selectedYear = yearFilter.value;
     const selectedCategory = categoryFilter.value;
     
@@ -219,6 +291,14 @@ async function loadSalesData() {
     `;
     
     try {
+        if (!supabaseClient) {
+            throw new Error('Supabase 클라이언트가 초기화되지 않았습니다.');
+        }
+        
+        if (!currentUser || !currentUser.id) {
+            throw new Error('사용자 정보가 없습니다.');
+        }
+        
         let query = supabaseClient
             .from('sales_reports')
             .select('*')
@@ -234,14 +314,46 @@ async function loadSalesData() {
         
         const { data: salesData, error } = await query;
         
-        if (error) throw error;
+        if (error) {
+            console.error('매출 데이터 조회 오류:', error);
+            
+            // 테이블이 없는 경우
+            if (error.code === '42P01' || error.message.includes('does not exist')) {
+                tableContainer.innerHTML = `
+                    <div class="empty-state">
+                        <h4>📋 데이터베이스 테이블이 없습니다</h4>
+                        <p>Supabase에서 sales_reports 테이블을 생성해주세요.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            // RLS 정책 오류
+            if (error.code === '42501' || error.message.includes('permission denied')) {
+                tableContainer.innerHTML = `
+                    <div class="empty-state">
+                        <h4>🔒 데이터 접근 권한이 없습니다</h4>
+                        <p>데이터베이스 접근 권한을 확인해주세요.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            throw error;
+        }
         
         displaySalesData(salesData, selectedYear, selectedCategory);
         updateStats(salesData);
         
     } catch (error) {
         console.error('Error loading sales data:', error);
-        displayEmptyState();
+        tableContainer.innerHTML = `
+            <div class="empty-state">
+                <h4>❌ 데이터 로드 오류</h4>
+                <p>데이터를 불러오는 중 오류가 발생했습니다: ${error.message}</p>
+                <p style="font-size: 12px; color: #64748b; margin-top: 8px;">페이지를 새로고침하거나 관리자에게 문의해주세요.</p>
+            </div>
+        `;
     }
 }
 
