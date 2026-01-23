@@ -1159,12 +1159,12 @@ async function downloadPDF() {
         
         const currentMonth = new Date().getMonth() + 1;
         const currentYear = new Date().getFullYear();
-        const selectedYear = parseInt(yearFilter.value);
+        const statsSelectedYear = parseInt(yearFilter.value);
         
         let currentMonthSales = 0;
         let lastMonthSales = 0;
         
-        if (selectedYear === currentYear) {
+        if (statsSelectedYear === currentYear) {
             currentMonthSales = data1[currentMonth - 1] || 0;
             lastMonthSales = data1[currentMonth - 2] || 0;
         } else {
@@ -1224,14 +1224,14 @@ async function downloadPDF() {
         }
         
         const tableElement = tableContainer.querySelector('.data-table');
-        const selectedYear = yearFilter.value;
+        const salesTableSelectedYear = yearFilter.value;
         const selectedCategory = categoryFilter.value;
         
         if (tableElement) {
             // 테이블 제목 추가
             const salesTableTitleHTML = `
                 <div style="font-family: 'Noto Sans KR', sans-serif; padding: 10px 0; background: white;">
-                    <h2 style="font-size: 16px; font-weight: bold; margin: 0; color: #1e293b;">📊 ${selectedYear}년 월별 매출 현황</h2>
+                    <h2 style="font-size: 16px; font-weight: bold; margin: 0; color: #1e293b;">📊 ${salesTableSelectedYear}년 월별 매출 현황</h2>
                 </div>
             `;
             
@@ -1290,7 +1290,7 @@ async function downloadPDF() {
             }
         } else {
             // 테이블이 없으면 이미지로 데이터 표시
-            const selectedYearData = getYearlyData(selectedYear);
+            const selectedYearData = getYearlyData(salesTableSelectedYear);
             let salesTableRows = '';
             
             for (let i = 0; i < 12; i++) {
@@ -1306,7 +1306,7 @@ async function downloadPDF() {
             
             const salesTableHTML = `
                 <div style="font-family: 'Noto Sans KR', sans-serif; padding: 20px; background: white;">
-                    <h2 style="font-size: 16px; font-weight: bold; margin: 0 0 15px 0; color: #1e293b;">📊 ${selectedYear}년 월별 매출 현황</h2>
+                    <h2 style="font-size: 16px; font-weight: bold; margin: 0 0 15px 0; color: #1e293b;">📊 ${salesTableSelectedYear}년 월별 매출 현황</h2>
                     <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
                         <thead>
                             <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0;">
