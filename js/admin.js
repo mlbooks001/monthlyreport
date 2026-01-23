@@ -731,10 +731,8 @@ fileUpload.addEventListener('change', async (e) => {
         
         if (fileType === 'xlsx' || fileType === 'xls') {
             await parseExcelFile(file);
-        } else if (fileType === 'pdf') {
-            await parsePDFFile(file);
         } else {
-            showFileMessage('지원하지 않는 파일 형식입니다. 엑셀(.xlsx, .xls) 또는 PDF(.pdf) 파일을 업로드해주세요.', 'error');
+            showFileMessage('지원하지 않는 파일 형식입니다. 엑셀(.xlsx, .xls) 파일을 업로드해주세요.', 'error');
             return;
         }
         
@@ -794,47 +792,6 @@ async function parseExcelFile(file) {
     });
 }
 
-// PDF 파일 파싱
-async function parsePDFFile(file) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        
-        reader.onload = async (e) => {
-            try {
-                const typedArray = new Uint8Array(e.target.result);
-                const pdf = await pdfjsLib.getDocument({ data: typedArray }).promise;
-                
-                fileParsedData = [];
-                let fullText = '';
-                
-                // 모든 페이지 텍스트 추출
-                for (let i = 1; i <= pdf.numPages; i++) {
-                    const page = await pdf.getPage(i);
-                    const textContent = await page.getTextContent();
-                    const pageText = textContent.items.map(item => item.str).join(' ');
-                    fullText += pageText + '\n';
-                }
-                
-                // 텍스트를 줄 단위로 분리하여 파싱
-                const lines = fullText.split('\n').filter(line => line.trim());
-                
-                lines.forEach(line => {
-                    const parsed = parseRowData(line.split(/\s+/));
-                    if (parsed) {
-                        fileParsedData.push(parsed);
-                    }
-                });
-                
-                resolve();
-            } catch (error) {
-                reject(error);
-            }
-        };
-        
-        reader.onerror = reject;
-        reader.readAsArrayBuffer(file);
-    });
-}
 
 // 엑셀 템플릿 다운로드
 function downloadExcelTemplate() {
