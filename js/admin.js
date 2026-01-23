@@ -187,7 +187,10 @@ function displayNoCustomers() {
             <p>회원가입한 고객이 여기에 표시됩니다.</p>
         </div>
     `;
-    customerSelect.innerHTML = '<option value="">등록된 고객이 없습니다</option>';
+    // 모든 고객 선택 드롭다운 업데이트
+    if (customerSelect) customerSelect.innerHTML = '<option value="">등록된 고객이 없습니다</option>';
+    if (bulkCustomerSelect) bulkCustomerSelect.innerHTML = '<option value="">등록된 고객이 없습니다</option>';
+    if (fileCustomerSelect) fileCustomerSelect.innerHTML = '<option value="">등록된 고객이 없습니다</option>';
 }
 
 // 고객 목록 표시
@@ -214,19 +217,45 @@ function displayCustomers(customers) {
 
 // 고객 선택 옵션 채우기
 function populateCustomerSelect(customers) {
-    customerSelect.innerHTML = '<option value="">고객을 선택하세요</option>';
-    bulkCustomerSelect.innerHTML = '<option value="">고객을 선택하세요</option>';
+    if (!customers || customers.length === 0) {
+        if (customerSelect) customerSelect.innerHTML = '<option value="">등록된 고객이 없습니다</option>';
+        if (bulkCustomerSelect) bulkCustomerSelect.innerHTML = '<option value="">등록된 고객이 없습니다</option>';
+        if (fileCustomerSelect) fileCustomerSelect.innerHTML = '<option value="">등록된 고객이 없습니다</option>';
+        return;
+    }
+    
+    // 모든 고객 선택 드롭다운 초기화
+    if (customerSelect) customerSelect.innerHTML = '<option value="">고객을 선택하세요</option>';
+    if (bulkCustomerSelect) bulkCustomerSelect.innerHTML = '<option value="">고객을 선택하세요</option>';
+    if (fileCustomerSelect) fileCustomerSelect.innerHTML = '<option value="">고객을 선택하세요</option>';
     
     customers.forEach(customer => {
-        const option1 = document.createElement('option');
-        option1.value = customer.id;
-        option1.textContent = `${customer.user_metadata?.company_name || customer.company_name || '회사명 없음'} (${customer.email})`;
-        customerSelect.appendChild(option1);
+        const customerName = customer.user_metadata?.company_name || customer.company_name || '회사명 없음';
+        const displayText = `${customerName} (${customer.email})`;
         
-        const option2 = document.createElement('option');
-        option2.value = customer.id;
-        option2.textContent = `${customer.user_metadata?.company_name || customer.company_name || '회사명 없음'} (${customer.email})`;
-        bulkCustomerSelect.appendChild(option2);
+        // 개별 등록 탭
+        if (customerSelect) {
+            const option1 = document.createElement('option');
+            option1.value = customer.id;
+            option1.textContent = displayText;
+            customerSelect.appendChild(option1);
+        }
+        
+        // 일괄 등록 탭
+        if (bulkCustomerSelect) {
+            const option2 = document.createElement('option');
+            option2.value = customer.id;
+            option2.textContent = displayText;
+            bulkCustomerSelect.appendChild(option2);
+        }
+        
+        // 파일 업로드 탭
+        if (fileCustomerSelect) {
+            const option3 = document.createElement('option');
+            option3.value = customer.id;
+            option3.textContent = displayText;
+            fileCustomerSelect.appendChild(option3);
+        }
     });
 }
 
@@ -820,22 +849,9 @@ function showBulkMessage(text, type) {
     }, 5000);
 }
 
-// 고객 선택 옵션 동기화 (bulkCustomerSelect와 fileCustomerSelect에도 추가)
+// 고객 선택 옵션 동기화 (모든 탭의 고객 선택 드롭다운 업데이트)
 function syncCustomerSelects(customers) {
-    bulkCustomerSelect.innerHTML = '<option value="">고객을 선택하세요</option>';
-    fileCustomerSelect.innerHTML = '<option value="">고객을 선택하세요</option>';
-    
-    customers.forEach(customer => {
-        const option1 = document.createElement('option');
-        option1.value = customer.id;
-        option1.textContent = `${customer.user_metadata?.company_name || customer.company_name || '회사명 없음'} (${customer.email})`;
-        bulkCustomerSelect.appendChild(option1);
-        
-        const option2 = document.createElement('option');
-        option2.value = customer.id;
-        option2.textContent = `${customer.user_metadata?.company_name || customer.company_name || '회사명 없음'} (${customer.email})`;
-        fileCustomerSelect.appendChild(option2);
-    });
+    populateCustomerSelect(customers);
 }
 
 // ========================================
